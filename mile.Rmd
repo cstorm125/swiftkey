@@ -9,7 +9,7 @@ output:
 
 # Executive Summary
 
-This milestone report/codebook details the modeling of [SwiftKey Capstone Project](), part of the Coursera's Data Science Specialization. Using 1% of the [Coursera SwiftKey data](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip), we create a backoff model with modified Kneser-Ney probability using uni-, bi-, tri- and quad-grams. Our choice of modeling has taken into account the accuracy-performance tradeoff and computational power available. The final model runs at 5 ms per query on average with a total of 41.3 MB of database. We then benchmark our algorithm using the code provided by [Jan-san](https://github.com/jan-san/dsci-benchmark/), yielding 14.31% overall top-3 score, a significant improvement over the baseline score of 6.64%.
+This milestone report/codebook details the modeling of [SwiftKey Capstone Project](https://www.coursera.org/account/accomplishments/records/QDKYKB83V7YA), part of the Coursera's Data Science Specialization. Using 1% of the [Coursera SwiftKey data](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip), we create a backoff model with modified Kneser-Ney probability using uni-, bi-, tri- and quad-grams. Our choice of modeling has taken into account the accuracy-performance tradeoff and computational power available. The final model runs at 5 ms per query on average with a total of 41.3 MB of database. We then benchmark our algorithm using the code provided by [Jan-san](https://github.com/jan-san/dsci-benchmark/), yielding 14.31% overall top-3 score, a significant improvement over the baseline score of 6.64%.
 
 # Data Processing
 

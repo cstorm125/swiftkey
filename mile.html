@@ -132,7 +132,7 @@ $(document).ready(function () {
 
 <div id="executive-summary" class="section level1">
 <h1>Executive Summary</h1>
-<p>This milestone report/codebook details the modeling of <a href>SwiftKey Capstone Project</a>, part of the Coursera’s Data Science Specialization. Using 1% of the <a href="https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip">Coursera SwiftKey data</a>, we create a backoff model with modified Kneser-Ney probability using uni-, bi-, tri- and quad-grams. Our choice of modeling has taken into account the accuracy-performance tradeoff and computational power available. The final model runs at 5 ms per query on average with a total of 41.3 MB of database. We then benchmark our algorithm using the code provided by <a href="https://github.com/jan-san/dsci-benchmark/">Jan-san</a>, yielding 14.31% overall top-3 score, a significant improvement over the baseline score of 6.64%.</p>
+<p>This milestone report/codebook details the modeling of <a href="https://www.coursera.org/account/accomplishments/records/QDKYKB83V7YA">SwiftKey Capstone Project</a>, part of the Coursera’s Data Science Specialization. Using 1% of the <a href="https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip">Coursera SwiftKey data</a>, we create a backoff model with modified Kneser-Ney probability using uni-, bi-, tri- and quad-grams. Our choice of modeling has taken into account the accuracy-performance tradeoff and computational power available. The final model runs at 5 ms per query on average with a total of 41.3 MB of database. We then benchmark our algorithm using the code provided by <a href="https://github.com/jan-san/dsci-benchmark/">Jan-san</a>, yielding 14.31% overall top-3 score, a significant improvement over the baseline score of 6.64%.</p>
 </div>
 <div id="data-processing" class="section level1">
 <h1>Data Processing</h1>
@@ -519,7 +519,7 @@ predict.quadmkn &lt;- function (words) {
 <p>Our model returns the following results in the following time:</p>
 <pre class="r"><code>system.time(predict.quadmkn('one of the'))</code></pre>
 <pre><code>##    user  system elapsed 
-##   0.871   0.021   0.897</code></pre>
+##   1.320   0.071   1.692</code></pre>
 <pre class="r"><code>predict.quadmkn('one of the')</code></pre>
 <pre><code>##        pred         pkn ngram
 ##  1:    most 0.112209571     4
