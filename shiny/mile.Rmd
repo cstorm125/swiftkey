@@ -1,0 +1,437 @@
+---
+title: "Deriving the Term Probability Tables for N-Grams"
+author: "Charin Polpanumas"
+output:
+  html_document:
+    toc: true
+    theme: readable
+---
+
+# Executive Summary
+
+This milestone report/codebook details the modeling of [SwiftKey Capstone Project](), part of the Coursera's Data Science Specialization. Using 1% of the [Coursera SwiftKey data](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip), we create a backoff model with modified Kneser-Ney probability using uni-, bi-, tri- and quad-grams. Our choice of modeling has taken into account the accuracy-performance tradeoff and computational power available. The final model runs at 5 ms per query on average with a total of 41.3 MB of database. We then benchmark our algorithm using the code provided by [Jan-san](https://github.com/jan-san/dsci-benchmark/), yielding 14.31% overall top-3 score, a significant improvement over the baseline score of 6.64%.
+
+# Data Processing
+
+We download and read the data into RDS format for better performance. We clean the data-- such as removing stop words and whitespaces--then tokenize the words into uni-, bi-, tri- and quad-grams for ```twitter```, ```blog``` and ```news``` dataset. We perform a summary for each of them.
+
+## Import necessary libraries
+
+```{r,message=FALSE,warning=FALSE}
+library(quanteda) #better tm
+library(knitr) #rendering nice tables
+library(data.table) #for faster database
+```
+
+## Download and unzip Coursera-SwiftKey.zip
+
+```{r}
+if (!file.exists('Coursera-SwiftKey.zip')){
+    download.file('https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip',
+                  destfile = 'Coursera-SwiftKey.zip')
+    unzip('Coursera-SwiftKey.zip')
+}
+```
+
+## Read and Sample
+
+RDS has better retrieval performance than a typical text file. We loaded the three files into ```twitter```, ```blog``` and ```news``` data frames. We sample 1% from all files and create a sample corpus.
+
+```{r, eval=FALSE}
+if (!file.exists('data/blogs.RDS')){
+    con_twitter <- file("final/en_US/en_US.twitter.txt", "r")
+    con_blog <- file("final/en_US/en_US.blogs.txt", "r")
+    con_news <- file("final/en_US/en_US.news.txt", "r")
+
+    twitter <-readLines(con_twitter,skipNul = TRUE)
+    blog <-readLines(con_blog,skipNul = TRUE)
+    news <-readLines(con_news,skipNul = TRUE)
+
+    saveRDS(twitter,'data/twitter.RDS')
+    saveRDS(blog,'data/blogs.RDS')
+    saveRDS(news,'data/news.RDS')}
+
+#Read from RDS for better performance
+twitter<-readRDS('data/twitter.RDS')
+blog<-readRDS('data/blogs.RDS')
+news<-readRDS('data/news.RDS')
+
+#Create sample of 1% from each
+set.seed(1412)
+big <- c(sample(twitter,.01*2360148),
+         sample(blog,.01*899288),
+         sample(news,.01*1010242))
+```
+
+## The Corpora and Document-feature Matrices
+
+Using the sample, we create a corpus then a document-feature matrix for uni-, bi-, tri- and quad-grams. We remove profanity as contained in [Bad Words List](http://www.cs.cmu.edu/~biglou/resources/bad-words.txt), punctuations, numbers, and hashtags from them then make the words all in lowercase. We will also process the frequency of frequencies data table to use in modified Kneser-Ney smoothing in the next section.
+
+```{r,eval=FALSE}
+#Create corpus; get rid of non-english terms
+big <- corpus(big)
+big <- sapply(big$documents,FUN=function(x) iconv(x, "latin1", "ASCII", sub=""))
+big <- corpus(big)
+
+#Tokenize
+#Transform to lowercase; remove punctuations, numbers, hashtags
+#We didn't use skip grams because it will cause grammatical errors in the prediction such as 'the the the'
+big1 <- tokenize(toLower(big),
+               ngrams=1,
+               skip=0,
+               removeNumbers=TRUE,
+               removePunct=TRUE,
+               removeTwitter = TRUE,
+               concatenator=' ')
+big2 <- tokenize(toLower(big),
+               ngrams=2,
+               skip=0,
+               removeNumbers=TRUE,
+               removePunct=TRUE,
+               removeTwitter = TRUE,
+               concatenator=' ')
+big3 <- tokenize(toLower(big),
+               ngrams=3,
+               skip=0,
+               removeNumbers=TRUE,
+               removePunct=TRUE,
+               removeTwitter = TRUE,
+               concatenator=' ')
+big4 <- tokenize(toLower(big),
+               ngrams=4,
+               skip=0,
+               removeNumbers=TRUE,
+               removePunct=TRUE,
+               removeTwitter = TRUE,
+               concatenator=' ')
+
+
+```
+
+```{r}
+#Import profanity
+profane <- readLines('data/bad-words.txt')[-1]
+#Create dfm
+if (!file.exists('data/dfm1.RDS')) {
+    dfm1 <- dfm(big1,
+               ignoredFeatures=profane,
+               stem=F)
+    saveRDS(dfm1,'data/dfm1.RDS')
+
+    dfm2 <- dfm(big2,
+               ignoredFeatures=profane,
+               stem=F)
+    saveRDS(dfm2,'data/dfm2.RDS')
+
+    dfm3 <- dfm(big3,
+               ignoredFeatures=profane,
+               stem=F)
+    saveRDS(dfm3,'data/dfm3.RDS')
+    
+    dfm4 <- dfm(big4,
+               ignoredFeatures=profane,
+               stem=F)
+    saveRDS(dfm4,'data/dfm4.RDS')
+    
+    #Save the data.tables
+    dt1 <- colSums(dfm1)
+    dt1<- sort(dt1,decreasing=TRUE) %>% as.data.table(dt1)
+    setnames(dt1,c('term','freq'))
+    setkey(dt1,term)
+    #setorder(dt1, -freq)
+    saveRDS(dt1,'data/dt1.RDS')
+    
+    dt2 <- colSums(dfm2)
+    dt2 <- sort(dt2,decreasing=TRUE) %>% as.data.table(dt2)
+    setnames(dt2,c('term','freq'))
+    setkey(dt2,term)
+    #setorder(dt2, -freq)
+    dt2[,c('w1','w2'):=tstrsplit(term,' ')]
+    saveRDS(dt2,'data/dt2.RDS')
+    
+    dt3 <- colSums(dfm3)
+    dt3 <- sort(dt3,decreasing=TRUE) %>% as.data.table(dt3)
+    setnames(dt3,c('term','freq'))
+    setkey(dt3,term)
+    #setorder(dt3, -freq)
+    dt3[,c('w1','w2','w3'):=tstrsplit(term,' ')]
+    dt3[,w1w2:=paste(w1,w2)]
+    dt3[,w2w3:=paste(w2,w3)]
+    saveRDS(dt3,'data/dt3.RDS')
+
+    dt4 <- colSums(dfm4)
+    dt4 <- sort(dt4,decreasing=TRUE) %>% as.data.table(dt4)
+    setnames(dt4,c('term','freq'))
+    setkey(dt4,term)
+    #setorder(dt4, -freq)
+    dt4[,c('w1','w2','w3','w4'):=tstrsplit(term,' ')]
+    dt4[,w2w3w4:=paste(w2,w3,w4)]
+    dt4[,w1w2w3:=paste(w1,w2,w3)]
+    dt4[,w2w3:=paste(w2,w3)]
+    saveRDS(dt4,'data/dt4.RDS')
+    
+    #Count data table
+    dt1_count<-data.table(freq=dt1$freq)
+    dt2_count<-data.table(freq=dt2$freq)
+    dt3_count<-data.table(freq=dt3$freq)
+    dt4_count<-data.table(freq=dt4$freq)
+    big_count <- rbind(dt1_count,dt2_count,dt3_count,countdt4_count)
+    count_dt <- data.table(table(big_count))
+    saveRDS(count_dt,'data/count_dt.RDS')
+
+} else {
+    dfm1 <- readRDS('data/dfm1.RDS')
+    dt1 <- readRDS('data/dt1.RDS')
+    d1 <- readRDS('data/d1.RDS')
+    
+    dfm2 <- readRDS('data/dfm2.RDS')
+    dt2 <- readRDS('data/dt2.RDS')
+    d2 <- readRDS('data/d2.RDS')
+    
+    dfm3 <- readRDS('data/dfm3.RDS')
+    dt3 <- readRDS('data/dt3.RDS')
+    d3 <- readRDS('data/d3.RDS')
+
+    dfm4 <- readRDS('data/dfm4.RDS')
+    dt4 <- readRDS('data/dt4.RDS')
+    d4 <- readRDS('data/d4.RDS')
+    
+    count_dt <- readRDS('data/count_dt.RDS')
+}
+```
+
+# Modeling
+## Modified Kneser-Ney Smoothing
+Modified Kneser-Ney smoothing creates a probability for a given n-gram based on its context interpolated with lower-level n-grams. It is considered by many to be [the most effective smoothing algorithm in n-gram models](http://nlp.stanford.edu/~wcmac/papers/20050421-smoothing-tutorial.pdf). The intuition is, for example, the word 'DeNiro' will have a rather high word frequency on its own. However, almost the only context it appears in is with 'Robert'; thus, we can assume that it is actually much 'less frequent'. [Chen and Goodman (1998) ](http://www.aclweb.org/anthology/P/P96/P96-1041.pdf) devised modified Kneser-Ney smoothing to take this into account. An improvement from Kneser-Ney smoothing, modified Kneser-Ney smoothing use different discount weights according to frequencies of frequencies of words to achieve more accurate results.
+
+We populate our data tables with modified Kneser-Ney probabilities then create a separate set of data tables (```d1```,```d2```,```d3```,```d4```) for more efficient memory usage of the shiny implementation.
+
+```{r,eval=FALSE}
+#Modified Kneser-Ney Smoothing
+#Discounting function
+D <- function(count){
+    d_simple <- count_dt[1]$N/(count_dt[1]$N+2*count_dt[2]$N)
+    
+    if (count==1){
+        d1<- 1-2*d_simple*(count_dt[2]$N/count_dt[1]$N)
+        return(d1)
+    } else if (count==2){
+        d2<- 2-3*d_simple*(count_dt[3]$N/count_dt[2]$N)
+        return(d2)
+    } else if (count >=3){
+        d3<- 3-4*d_simple*(count_dt[4]$N/count_dt[3]$N)
+        return(d3)
+    }
+}
+
+#Discount data table
+d_dt <- data.table(d=c(D(1),D(2),D(3)))
+
+#Prepare data tables for pkn functions
+dt2[,c('w1','w2'):=tstrsplit(term,' ')]
+dt3[,c('w1','w2','w3'):=tstrsplit(term,' ')]
+dt4[,c('w1','w2','w3','w4'):=tstrsplit(term,' ')]
+
+#pkn functions
+uni_pkn <- function (uni){
+    o_w1 <- dim(dt2[w2==uni])[1]
+    o_o <- dim(dt2)[1]
+    return(o_w1/o_o)
+}
+
+bi_pkn <- function (bi){
+    bi_freq <- dt2[bi]$freq
+    
+    #determine discount
+    if (bi_freq==1){
+        dif <-d_dt[1]$d
+    } else if (bi_freq==2){
+        dif <-d_dt[2]$d
+    } else {
+        dif <-d_dt[3]$d
+    }
+    
+    word1 <- strsplit(bi, split=' ')[[1]][1] #0
+    word2 <- strsplit(bi, split=' ')[[1]][2] #0
+    o_w1_w2 <- dim(dt3[w2w3==bi])[1] #0.002
+    o_w1_o <- dim(dt3[w2==word1])[1] #0.002
+    w1_o <- dim(dt2[w1==word1])[1] #0.002
+    
+    N1 <- sum(dt2[w1==word1,freq==1]) #0.002
+    N2 <- sum(dt2[w1==word1,freq==2]) #0.002
+    N3 <- sum(dt2[w1==word1,freq>=3]) #0.002
+    
+    gamma <- (d_dt[1]$d*N1 + d_dt[2]$d*N2 +d_dt[3]$d*N3)/o_w1_o #0.002
+    
+    pkn <- max(o_w1_w2- dif,0)/o_w1_o + gamma * dt1[word2]$pkn
+    #uni_pkn(word2)
+    return(pkn)
+}
+
+tri_pkn <- function (tri){
+    tri_freq <- dt3[tri]$freq
+    
+    #determine discount
+    if (tri_freq==1){
+        dif <-d_dt[1]$d
+    } else if (tri_freq==2){
+        dif <-d_dt[2]$d
+    } else {
+        dif <-d_dt[3]$d
+    }
+    
+    word1 <- strsplit(tri, split=' ')[[1]][1] #0
+    word2 <- strsplit(tri, split=' ')[[1]][2] #0
+    word3 <- strsplit(tri, split=' ')[[1]][3] #0
+    word1_word2 <- paste(word1,word2)
+    word2_word3 <- paste(word2,word3)
+    
+    o_w1_w2_w3 <- dim(dt4[w2w3w4==tri])[1] #0.002
+    o_w1_w2_o <- dim(dt4[w2w3==word1_word2])[1] #0.002
+    w1_w2_o <- dim(dt3[w1w2==word1_word2])[1] #0.002
+    
+    N1 <- sum(dt3[w1w2==word1_word2,freq==1]) #0.002
+    N2 <- sum(dt3[w1w2==word1_word2,freq==2]) #0.002
+    N3 <- sum(dt3[w1w2==word1_word2,freq>=3]) #0.002
+    gamma <- (d_dt[1]$d*N1 + d_dt[2]$d*N2 +d_dt[3]$d*N3)/o_w1_w2_o #0.002
+    
+    pkn <- max(o_w1_w2_w3- dif,0)/o_w1_w2_o + gamma*dt2[word2_word3]$pkn
+    #bi_pkn(word2_word3)
+    
+    return(pkn)
+}
+
+quad_pkn <- function(quad){
+    quad_freq <- dt4[term==quad]$freq
+    
+    #determine discount
+    if (quad_freq==1){
+        dif <-d_dt[1]$d
+    } else if (quad_freq==2){
+        dif <-d_dt[2]$d
+    } else {
+        dif <-d_dt[3]$d
+    }
+    
+    word1 <- strsplit(quad, split=' ')[[1]][1]
+    word2 <- strsplit(quad, split=' ')[[1]][2]
+    word3 <- strsplit(quad, split=' ')[[1]][3]
+    word4 <- strsplit(quad, split=' ')[[1]][4]
+    word1_word2_word3 <- paste(word1,word2,word3)
+    word2_word3_word4 <- paste(word2,word3,word4)
+
+    pre_tri_freq <- dt3[term==word1_word2_word3]$freq
+    N1 <-sum(dt4[w1w2w3==word1_word2_word3,freq==1])
+    N2 <-sum(dt4[w1w2w3==word1_word2_word3,freq==2])
+    N3 <-sum(dt4[w1w2w3==word1_word2_word3,freq>=3])
+    gamma <- (d_dt[1]$d*N1 + d_dt[2]$d*N2 +d_dt[3]$d*N3)/pre_tri_freq
+    
+    pkn <- max(quad_freq - dif, 0)/pre_tri_freq + gamma * dt3[term==word2_word3_word4]$pkn
+    #tri_pkn(word2_word3_word4)
+    return(pkn)
+}
+
+
+#Populate the data.tables with pkn
+dt1[,pkn:=0]
+for (i in 1:dim(dt1)[1]){
+    set(dt1,i,3L,value=uni_pkn(dt1[i,term]))
+}
+setorder(dt1,-pkn)
+saveRDS(dt1,'data/dt1.RDS')
+
+dt2[,pkn:=0]
+for (i in 1:dim(dt2)[1]){
+    set(dt2,i,5L,value=bi_pkn(dt2[i,term]))
+}
+setorder(dt2,-pkn)
+dt2<- dt2[pkn!='NaN' & pkn<=1]
+saveRDS(dt2,'data/dt2.RDS')
+
+dt3[,pkn:=0]
+for (i in 1:dim(dt3)[1]){
+    set(dt3,i,8L,value=tri_pkn(dt3[i,term]))
+}
+setorder(dt3,-pkn)
+dt3 <-dt3[pkn!='NaN' & pkn<=1]
+saveRDS(dt3,'data/dt3.RDS')
+
+dt4[,pkn:=0]
+for (i in 1:dim(dt4)[1]){
+    set(dt4,i,10L,value=quad_pkn(dt4[i,term]))
+}
+setorder(dt4,-pkn)
+dt4<-dt4[pkn!='NaN' & pkn<=1]
+saveRDS(dt4,'data/dt4.RDS')
+
+#Create more compact data tables for the app
+d1<-dt1[,c('term','pkn'),with=FALSE]
+colnames(d1) <- c('pred','pkn')
+d1[,ngram:=1]
+saveRDS(d1,'data/d1.RDS')
+
+d2<-dt2[,c('term','pkn','w1','w2'),with=FALSE]
+colnames(d2) <- c('term','pkn','w1','pred')
+d2[,ngram:=2]
+saveRDS(d2,'data/d2.RDS')
+
+d3<-dt3[,c('term','pkn','w1w2','w3'),with=FALSE]
+colnames(d3) <- c('term','pkn','w1w2','pred')
+d3[,ngram:=3]
+saveRDS(d3,'data/d3.RDS')
+
+d4<-dt4[,c('term','pkn','w1w2w3','w4'),with=FALSE]
+colnames(d4) <- c('term','pkn','w1w2w3','pred')
+d4[,ngram:=4]
+saveRDS(d4,'data/d4.RDS')
+```
+
+## Backoff Model
+The backoff model is a Markov-chain based model where the highest-order n-grams (in our case quad-grams) are used first to determine the next word. If there is no match, the lower-order n-grams are used ending with uni-grams, effectively selecting the single word with the highest probability (in our case modified Kneser-Ney probability) in the corpus.
+
+```{r}
+#Back-off function
+predict.quadmkn <- function (words) {
+    words <- tail(tokenize(toLower(words),
+                           removeNumbers=TRUE,
+                           removePunct=TRUE,
+                           removeTwitter = TRUE,
+                           simplify=TRUE),3)
+    word1_word2_word3 <- paste(tail(words,3),collapse = ' ')
+    quad <- head(d4[w1w2w3==word1_word2_word3,c('pred','pkn','ngram'),with=FALSE])
+    word2_word3 <- paste(tail(words,2),collapse = ' ')
+    tri <- head(d3[w1w2==word2_word3,c('pred','pkn','ngram'),with=FALSE])
+    word3 <- tail(words,1)
+    bi <- head(d2[w1==word3,c('pred','pkn','ngram'),with=FALSE])
+    uni <- head(d1)
+    result <- rbind(quad,tri,bi,uni)
+    head(result,10)
+}
+```
+
+# Evaluation
+Our model returns the following results in the following time:
+```{r}
+system.time(predict.quadmkn('one of the'))
+predict.quadmkn('one of the')
+```
+
+Below is the benchmarking results using [Jan-san](https://github.com/jan-san/dsci-benchmark/)'s implementation. The numbers in parantheses are those of baseline predictions.
+```{r, eval=FALSE}
+Overall top-3 score:     14.31 % (6.64 %)
+Overall top-1 precision: 10.23 % (5.42 %)
+Overall top-3 precision: 17.82 % (8.11 %)
+
+Average runtime:         5.00 msec (0.09 msec)
+Number of predictions:   28464
+Total memory used:       704.73 MB (286.76 MB)
+
+Dataset details
+ -Dataset "blogs" (599 lines, 14587 words)
+ Score: 14.08 %, Top-1 precision: 10.10 %, Top-3 precision: 17.53 %
+ -Dataset "tweets" (793 lines, 14071 words)
+ Score: 14.53 %, Top-1 precision: 10.37 %, Top-3 precision: 18.10 %
+
+R version 3.2.3 (2015-12-10), platform x86_64-apple-darwin13.4.0 (64-bit)
+Attached non-base packages:   stringi (v1.0-1), digest (v0.6.9), plyr (v1.8.3), quanteda (v0.9.4), shinythemes (v1.0.1), wordcloud (v2.5), RColorBrewer (v1.1-2), data.table (v1.9.6), shiny (v0.13.1)
+Unattached non-base packages: Rcpp (v0.12.3), lattice (v0.20-33), mime (v0.4), slam (v0.1-32), grid (v3.2.3), chron (v2.3-47), R6 (v2.1.2), xtable (v1.8-2), jsonlite (v0.9.19), ca (v0.64), Matrix (v1.2-3), tools (v3.2.3), compiler (v3.2.3), parallel (v3.2.3), httpuv (v1.3.3), rsconnect (v0.4.1.4), htmltools (v0.3)```
